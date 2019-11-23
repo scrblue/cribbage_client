@@ -99,6 +99,15 @@ pub enum GameToClient {
     // That the cut has resulted in a tie and that it must be redone
     InitialCutFailure,
 
+    // That the game is waiting for confirmation to deal the hand
+    WaitDeal,
+
+    // That cards are actively being dealt
+    Dealing,
+
+    // That the player's hand is the included vector
+    DealtHand(Vec<cribbage::deck::Card>),
+
     // That an error has occured
     Error(String),
 
@@ -108,9 +117,11 @@ pub enum GameToClient {
 
 fn read_message(stream: &mut net::TcpStream, username: String) {
     let mut parsed_from_server: Option<GameToClient> = None;
-    while parsed_from_server != Some(GameToClient::Disconnect) {
+    while parsed_from_server != Some(GameToClient::Disconnect)
+        && parsed_from_server != Some(GameToClient::DeniedTableFull)
+    {
         // Wait for a message from the server, parse it, and respond appropriately
-        let mut message = [0 as u8; 50];
+        let mut message = [0 as u8; 256];
         stream.read(&mut message).unwrap();
 
         parsed_from_server = Some(bincode::deserialize(&message.to_vec()).unwrap());
@@ -156,6 +167,23 @@ fn read_message(stream: &mut net::TcpStream, username: String) {
 
             Some(GameToClient::InitialCutFailure) => {
                 println!("There was a tie; redoing the cut");
+            }
+
+            Some(GameToClient::WaitDeal) => {
+                println!("Press return to deal the hands");
+                let mut stdin = io::stdin();
+                let _ = stdin.read(&mut [0u8]).unwrap();
+                stream
+                    .write(&bincode::serialize(&ClientToGame::Confirmation).unwrap())
+                    .unwrap();
+            }
+
+            Some(GameToClient::Dealing) => {
+                println!("The hands are being dealt");
+            }
+
+            Some(GameToClient::DealtHand(hand)) => {
+                println!("Your hand is: {:?}", hand);
             }
 
             Some(GameToClient::Disconnect) => {
